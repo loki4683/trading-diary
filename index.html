@@ -106,10 +106,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <div class="tabs" role="tablist">
     <button role="tab" id="tabOps" aria-selected="true">Operazioni</button>
     <button role="tab" id="tabMonths" aria-selected="false">Mesi</button>
+    <button role="tab" id="tabTitles" aria-selected="false">Titoli</button>
   </div>
 
   <div id="ops" class="list"></div>
   <div id="months" class="list" hidden></div>
+  <div id="titles" class="list" hidden></div>
   <div class="acts" style="justify-content:center">
     <button type="button" id="expBtn">Esporta backup</button>
     <button type="button" id="impBtn">Importa backup</button>
@@ -198,6 +200,7 @@ function render(){
   // mesi
   const keys=Object.keys(months).sort().reverse();
   const maxAbs=Math.max(1,...keys.map(k=>Math.abs(months[k].gain)));
+  renderTitles();
   $("months").innerHTML=keys.length?keys.map(k=>{const m=months[k];
     return `<div class="month">
       <div class="top"><h2>${monthName(k)}</h2><span class="num ${cls(m.gain)}">${sgn(m.gain)}</span></div>
@@ -207,6 +210,25 @@ function render(){
         <div><span class="lbl">Rendimento</span><span class="num ${cls(m.gain)}">${m.inv?pct(m.gain/m.inv*100):"—"}</span></div>
         <div><span class="lbl">Operazioni chiuse</span><span class="num">${m.n}</span></div>
       </div></div>`}).join(""):`<div class="empty">Qui compaiono i guadagni mese per mese, con il capitale investito per ottenerli, appena chiudi un’operazione.</div>`;
+}
+
+function renderTitles(){
+  const g={};
+  for(const t of [...trades].sort((a,b)=>(a.ts||0)-(b.ts||0))){
+    const k=t.isin||t.name.trim().toLowerCase(), c=calc(t);
+    const x=g[k]??={name:t.name,isin:t.isin||"",n:0,open:0,gain:0,target:null,buy:t.buy};
+    x.name=t.name; x.buy=t.buy; x.n++; if(c.closed)x.gain+=c.gain; else x.open++;
+    if(typeof t.target==="number")x.target=t.target;
+  }
+  const arr=Object.values(g).sort((a,b)=>a.name.localeCompare(b.name,"it"));
+  $("titles").innerHTML=arr.length?arr.map(x=>`<div class="card">
+    <div class="top"><div><div class="name">${esc(x.name)}</div><div class="date">${x.n} ${x.n===1?"operazione":"operazioni"}${x.open?" · "+x.open+" aperta/e":" · chiuso"}</div></div>
+      <span class="pill ${cls(x.gain)||"open"}">${sgn(x.gain)}</span></div>
+    ${x.isin?`<button type="button" class="isin" data-copy="${esc(x.isin)}"><span class="num">${esc(x.isin)}</span><span>Copia</span></button>`:""}
+    <div class="grid">
+      <div><span class="lbl">Prezzo utile acquisto</span><span class="num" style="font-size:18px;font-weight:600">${x.target===null?"—":px(x.target)}</span></div>
+      <div><span class="lbl">Ultimo prezzo medio</span><span class="num">${px(x.buy)}</span></div>
+    </div></div>`).join(""):`<div class="empty">Qui compare l’elenco dei titoli che hai trattato, con il loro prezzo utile di acquisto.</div>`;
 }
 
 // ---- modulo
@@ -246,7 +268,7 @@ $("form").addEventListener("submit",async e=>{
 });
 
 // ---- lista: copia, modifica, elimina
-$("ops").addEventListener("click",async e=>{
+document.querySelector(".wrap").addEventListener("click",async e=>{
   const b=e.target.closest("button"); if(!b)return;
   if(b.dataset.copy){ try{await navigator.clipboard.writeText(b.dataset.copy);toast("ISIN copiato")}
     catch{const r=document.createRange();r.selectNodeContents(b.firstElementChild);const s=getSelection();s.removeAllRanges();s.addRange(r);toast("Selezionato: copia a mano")} }
@@ -257,9 +279,9 @@ $("ops").addEventListener("click",async e=>{
 });
 
 // ---- schede
-function tab(m){ $("ops").hidden=m; $("months").hidden=!m; $("tabOps").setAttribute("aria-selected",!m); $("tabMonths").setAttribute("aria-selected",m); }
-$("tabOps").onclick=()=>tab(false); $("tabMonths").onclick=()=>tab(true);
-if(location.hash==="#mesi")tab(true);
+const TABS=[["tabOps","ops"],["tabMonths","months"],["tabTitles","titles"]];
+function tab(i){ TABS.forEach(([b,p],j)=>{ $(p).hidden=j!==i; $(b).setAttribute("aria-selected",j===i); }); }
+TABS.forEach(([b],i)=>$(b).onclick=()=>tab(i));
 
 // ---- archivio: database privato dell'utente, altrimenti memoria del browser
 function lsRead(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch{return[]}}
