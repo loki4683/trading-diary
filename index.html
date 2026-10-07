@@ -126,7 +126,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <form id="form" autocomplete="off">
     <header><h1 id="formTitle">Nuova operazione</h1><button type="button" id="cancelBtn">Annulla</button></header>
     <label class="f"><span class="lbl">Nome titolo</span><input id="fName" required></label>
-    <label class="f"><span class="lbl">ISIN</span><input id="fIsin" class="num" autocapitalize="characters" maxlength="12" spellcheck="false"></label>
+    <div class="row">
+      <label class="f"><span class="lbl">ISIN</span><input id="fIsin" class="num" autocapitalize="characters" maxlength="12" spellcheck="false"></label>
+      <label class="f"><span class="lbl">Data di acquisto</span><input id="fIn" type="date"></label>
+    </div>
     <div class="row">
       <label class="f"><span class="lbl">Quote prese</span><input id="fQty" class="num" inputmode="decimal" required></label>
       <label class="f"><span class="lbl">Prezzo medio</span><input id="fBuy" class="num" inputmode="decimal" required></label>
@@ -163,6 +166,14 @@ const monthName=k=>new Date(k+"-01T12:00:00").toLocaleDateString("it-IT",{month:
 function calc(t){ const inv=t.qty*t.buy, closed=typeof t.sell==="number"&&!isNaN(t.sell);
   const out=closed?t.qty*t.sell:null; return {inv,out,closed,gain:closed?out-inv:null}; }
 
+// Esposizione giorno per giorno delle operazioni chiuse nel mese: massimo e media sul periodo coperto.
+const dayN=d=>Math.round(Date.parse(d+"T00:00:00Z")/864e5);
+function expo(list){
+  const iv=list.map(t=>{const out=dayN(t.date||today()); let a=dayN(t.din||t.date||today()); if(!(a<=out))a=out; return {a,out,inv:t.qty*t.buy}});
+  const a=Math.min(...iv.map(x=>x.a)), b=Math.max(...iv.map(x=>x.out)); let max=0,sum=0;
+  for(let d=a;d<=b;d++){let e=0; for(const x of iv) if(x.a<=d&&d<=x.out) e+=x.inv; sum+=e; if(e>max)max=e;}
+  return {max,avg:sum/(b-a+1)};
+}
 function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,1400)}
 
 function render(){
@@ -171,11 +182,12 @@ function render(){
   // riepilogo
   const months={}; let tot=0,totInv=0,nClosed=0;
   for(const t of list){const c=calc(t); if(!c.closed)continue; const k=(t.date||today()).slice(0,7);
-    const m=months[k]??={gain:0,inv:0,n:0}; m.gain+=c.gain; m.inv+=c.inv; m.n++; tot+=c.gain; totInv+=c.inv; nClosed++;}
+    const m=months[k]??={gain:0,inv:0,n:0}; m.gain+=c.gain; m.inv+=c.inv; m.n++; (m.tr??=[]).push(t); tot+=c.gain; totInv+=c.inv; nClosed++;}
+  for(const k in months)Object.assign(months[k],expo(months[k].tr));
   const cur=months[today().slice(0,7)];
   $("sMonthLbl").textContent=monthName(today().slice(0,7));
   $("sMonth").textContent=sgn(cur?cur.gain:0); $("sMonth").className="num "+cls(cur?cur.gain:0);
-  $("sMonthCap").textContent=cur?"su "+eur(cur.inv)+" investiti":"nessuna operazione chiusa";
+  $("sMonthCap").textContent=cur?"esposizione max "+eur(cur.max):"nessuna operazione chiusa";
   $("sTot").textContent=sgn(tot); $("sTot").className="num "+cls(tot);
   $("sTotCap").textContent=nClosed+(nClosed===1?" operazione chiusa":" operazioni chiuse");
 
@@ -183,7 +195,7 @@ function render(){
   $("ops").innerHTML=list.length?list.map(t=>{const c=calc(t);
     const pill=c.closed?`<span class="pill ${cls(c.gain)}">${sgn(c.gain)}<br><small>${c.inv?pct(c.gain/c.inv*100):""}</small></span>`:`<span class="pill open">Aperta</span>`;
     return `<div class="card ${c.closed?(c.gain>0?"g":c.gain<0?"l":""):""}">
-      <div class="top"><div><div class="name">${esc(t.name)}</div><div class="date">${c.closed&&t.date?"Uscita "+new Date(t.date+"T12:00:00").toLocaleDateString("it-IT"):""}</div></div>${pill}</div>
+      <div class="top"><div><div class="name">${esc(t.name)}</div><div class="date">${t.din?"Acquisto "+new Date(t.din+"T12:00:00").toLocaleDateString("it-IT")+(c.closed?" · ":""):""}${c.closed&&t.date?"Uscita "+new Date(t.date+"T12:00:00").toLocaleDateString("it-IT"):""}</div></div>${pill}</div>
       ${t.isin?`<button type="button" class="isin" data-copy="${esc(t.isin)}"><span class="num">${esc(t.isin)}</span><span>Copia</span></button>`:""}
       <div class="grid">
         <div><span class="lbl">Quote</span><span class="num">${px(t.qty)}</span></div>
@@ -206,8 +218,9 @@ function render(){
       <div class="top"><h2>${monthName(k)}</h2><span class="num ${cls(m.gain)}">${sgn(m.gain)}</span></div>
       <div class="bar"><i class="${cls(m.gain)}" style="width:${Math.abs(m.gain)/maxAbs*100}%"></i></div>
       <div class="grid">
-        <div><span class="lbl">Capitale investito</span><span class="num">${eur(m.inv)}</span></div>
-        <div><span class="lbl">Rendimento</span><span class="num ${cls(m.gain)}">${m.inv?pct(m.gain/m.inv*100):"—"}</span></div>
+        <div><span class="lbl">Capitale medio</span><span class="num">${eur(m.avg)}</span></div>
+        <div><span class="lbl">Massima esposizione</span><span class="num">${eur(m.max)}</span></div>
+        <div><span class="lbl">Rendimento su max</span><span class="num ${cls(m.gain)}">${m.max?pct(m.gain/m.max*100):"—"}</span></div>
         <div><span class="lbl">Operazioni chiuse</span><span class="num">${m.n}</span></div>
       </div></div>`}).join(""):`<div class="empty">Qui compaiono i guadagni mese per mese, con il capitale investito per ottenerli, appena chiudi un’operazione.</div>`;
 }
@@ -245,7 +258,7 @@ function live(){
 function openForm(t){
   editId=t?t.id:null; $("formTitle").textContent=t?"Modifica operazione":"Nuova operazione";
   const v=n=>typeof n==="number"&&!isNaN(n)?String(n).replace(".",","):"";
-  $("fName").value=t?t.name:""; $("fIsin").value=t?t.isin||"":""; $("fDate").value=t&&calc(t).closed?t.date||"":"";
+  $("fName").value=t?t.name:""; $("fIsin").value=t?t.isin||"":""; $("fDate").value=t&&calc(t).closed?t.date||"":""; $("fIn").value=t?t.din||"":today();
   $("fQty").value=t?v(t.qty):""; $("fBuy").value=t?v(t.buy):""; $("fSell").value=t?v(t.sell):""; $("fTarget").value=t?v(t.target):"";
   $("fErr").hidden=true; live(); $("sheet").hidden=false; $("sheet").scrollTop=0; if(!t)$("fName").focus();
 }
@@ -260,8 +273,9 @@ $("form").addEventListener("submit",async e=>{
   if(!(buy>=0))return err("Inserisci il prezzo medio.");
   if($("fSell").value.trim()&&isNaN(sell))return err("Il prezzo di uscita non è un numero valido.");
   if($("fTarget").value.trim()&&isNaN(target))return err("Il prezzo utile di acquisto non è un numero valido.");
+  if(!isNaN(sell)&&$("fIn").value&&$("fDate").value&&$("fDate").value<$("fIn").value)return err("La data di uscita è precedente alla data di acquisto.");
   const old=trades.find(t=>t.id===editId);
-  const d={name:$("fName").value.trim(),isin:$("fIsin").value.trim().toUpperCase(),date:isNaN(sell)?"":($("fDate").value||today()),qty,buy,ts:old?old.ts:Date.now()};
+  const d={name:$("fName").value.trim(),isin:$("fIsin").value.trim().toUpperCase(),date:isNaN(sell)?"":($("fDate").value||today()),qty,buy,din:$("fIn").value||"",ts:old?old.ts:Date.now()};
   if(!isNaN(sell))d.sell=sell; if(!isNaN(target))d.target=target;
   try{ await save(editId,d); $("sheet").hidden=true; toast("Salvata"); }
   catch(x){ err(x&&x.code==="quota_exceeded"?"Spazio esaurito: elimina qualche operazione vecchia.":"Salvataggio non riuscito. Riprova tra poco."); }
