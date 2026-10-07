@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Diario di Trading</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#0e1319">
+<style>html{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}body{margin:0}[hidden]{display:none!important}</style>
+<style>
+/* Layout: una colonna da telefono. Riepilogo in alto, due schede (Operazioni / Mesi), modulo a comparsa dal basso. */
+:root{
+  --bg:#eef1f4; --surface:#ffffff; --surface2:#e3e8ed; --fg:#131a22; --muted:#5b6876; --line:#d2d9e0;
+  --accent:#1f4fd8; --on-accent:#ffffff;
+  --gain:#0b7a43; --gain-bg:#dff3e7; --loss:#c22b2b; --loss-bg:#fbe3e1;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#0e1319; --surface:#171e27; --surface2:#222b36; --fg:#e8edf2; --muted:#93a0ae; --line:#2b3542;
+  --accent:#7ea2ff; --on-accent:#0b1220;
+  --gain:#3ddc84; --gain-bg:#12301f; --loss:#ff6b63; --loss-bg:#3a1917; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#0e1319; --surface:#171e27; --surface2:#222b36; --fg:#e8edf2; --muted:#93a0ae; --line:#2b3542;
+  --accent:#7ea2ff; --on-accent:#0b1220;
+  --gain:#3ddc84; --gain-bg:#12301f; --loss:#ff6b63; --loss-bg:#3a1917; color-scheme:dark }
+
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:15px;line-height:1.4}
+.wrap{max-width:560px;margin:0 auto;padding-inline:16px;padding-block:16px 110px;display:flex;flex-direction:column;gap:14px}
+h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.01em}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.lbl{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);font-weight:600}
+.pos{color:var(--gain)} .neg{color:var(--loss)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.summary{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.sum{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.sum .num{font-size:20px;font-weight:600;overflow-wrap:anywhere}
+.sum small{color:var(--muted);font-size:12px}
+
+.tabs{display:flex;background:var(--surface2);border-radius:10px;padding:3px;gap:3px}
+.tabs button{flex:1;border:0;background:transparent;padding:9px;border-radius:8px;font-weight:600;color:var(--muted)}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--fg)}
+
+.list{display:flex;flex-direction:column;gap:10px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px}
+.card.g{border-left:4px solid var(--gain)} .card.l{border-left:4px solid var(--loss)}
+.top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.top>div{min-width:0}
+.name{font-weight:600;font-size:16px;overflow-wrap:anywhere}
+.date{color:var(--muted);font-size:12px}
+.pill{font-family:var(--mono);font-weight:600;padding:4px 8px;border-radius:6px;white-space:nowrap;text-align:right}
+.pill.pos{background:var(--gain-bg)} .pill.neg{background:var(--loss-bg)}
+.pill.open{background:var(--surface2);color:var(--muted);font-family:var(--sans);font-size:12px}
+.isin{display:flex;align-items:center;gap:8px;border:1px dashed var(--line);background:transparent;border-radius:8px;padding:8px 10px;width:100%;text-align:left}
+.isin .num{flex:1;min-width:0;overflow-wrap:anywhere;user-select:all}
+.isin span:last-child{font-size:12px;font-weight:600;color:var(--accent)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+.grid div{display:flex;flex-direction:column;min-width:0}
+.acts{display:flex;gap:8px;justify-content:flex-end}
+.acts button{border:1px solid var(--line);background:transparent;border-radius:8px;padding:6px 12px;font-size:13px;color:var(--muted)}
+.acts button.danger{color:var(--loss);border-color:var(--loss)}
+
+.month{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.month .top .num{font-size:18px;font-weight:600}
+.month h2{margin:0;font-size:16px;text-transform:capitalize}
+.bar{height:6px;border-radius:3px;background:var(--surface2);overflow:hidden}
+.bar i{display:block;height:100%}
+.bar i.pos{background:var(--gain)} .bar i.neg{background:var(--loss)}
+
+.empty{border:1px dashed var(--line);border-radius:10px;padding:24px 16px;text-align:center;color:var(--muted)}
+.note{font-size:12px;color:var(--muted);text-align:center}
+
+.fab{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));background:linear-gradient(transparent,var(--bg) 35%);display:flex;justify-content:center}
+.fab button,.primary{background:var(--accent);color:var(--on-accent);border:0;border-radius:10px;padding:14px 20px;font-weight:700;font-size:16px;width:100%;max-width:528px}
+
+.sheet{position:fixed;inset:0;background:var(--bg);overflow-y:auto;z-index:5;padding:calc(12px + env(safe-area-inset-top,0px)) 16px calc(20px + env(safe-area-inset-bottom,0px))}
+.sheet form{max-width:528px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.sheet header{display:flex;justify-content:space-between;align-items:center}
+.sheet header button{border:0;background:transparent;color:var(--accent);font-weight:600;padding:8px 0}
+.f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.f input{font:inherit;font-size:17px;padding:11px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--fg);width:100%;min-width:0}
+.f input.num{font-family:var(--mono)}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.calc{background:var(--surface2);border-radius:8px;padding:11px 12px;font-size:17px;font-weight:500;min-height:46px}
+.calc.big{font-size:22px;font-weight:600}
+.err{color:var(--loss);font-size:13px}
+.toast{position:fixed;left:50%;bottom:calc(84px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:14px;font-weight:600;z-index:9;white-space:nowrap}
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <h1>Diario di Trading</h1>
+
+  <div class="summary">
+    <div class="sum"><span class="lbl" id="sMonthLbl">Questo mese</span><span class="num" id="sMonth">0,00 €</span><small id="sMonthCap">nessuna operazione chiusa</small></div>
+    <div class="sum"><span class="lbl">Totale</span><span class="num" id="sTot">0,00 €</span><small id="sTotCap">0 operazioni chiuse</small></div>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tabOps" aria-selected="true">Operazioni</button>
+    <button role="tab" id="tabMonths" aria-selected="false">Mesi</button>
+  </div>
+
+  <div id="ops" class="list"></div>
+  <div id="months" class="list" hidden></div>
+  <div class="acts" style="justify-content:center">
+    <button type="button" id="expBtn">Esporta backup</button>
+    <button type="button" id="impBtn">Importa backup</button>
+    <input type="file" id="impFile" accept=".json,application/json" hidden>
+  </div>
+  <p class="note" id="storeNote" hidden></p>
+</div>
+
+<div class="fab"><button id="addBtn" type="button">+ Nuova operazione</button></div>
+
+<div class="sheet" id="sheet" hidden>
+  <form id="form" autocomplete="off">
+    <header><h1 id="formTitle">Nuova operazione</h1><button type="button" id="cancelBtn">Annulla</button></header>
+    <label class="f"><span class="lbl">Nome titolo</span><input id="fName" required></label>
+    <label class="f"><span class="lbl">ISIN</span><input id="fIsin" class="num" autocapitalize="characters" maxlength="12" spellcheck="false"></label>
+    <div class="row">
+      <label class="f"><span class="lbl">Quote prese</span><input id="fQty" class="num" inputmode="decimal" required></label>
+      <label class="f"><span class="lbl">Prezzo medio</span><input id="fBuy" class="num" inputmode="decimal" required></label>
+    </div>
+    <div class="f"><span class="lbl">Euro investiti</span><div class="calc num" id="cInv">—</div></div>
+    <div class="row">
+      <label class="f"><span class="lbl">Prezzo di uscita</span><input id="fSell" class="num" inputmode="decimal" placeholder="vuoto = aperta"></label>
+      <label class="f"><span class="lbl">Data di uscita</span><input id="fDate" type="date"></label>
+    </div>
+    <div class="f"><span class="lbl">Euro disinvestiti</span><div class="calc num" id="cOut">—</div></div>
+    <div class="f"><span class="lbl">Guadagno</span><div class="calc big num" id="cGain">—</div></div>
+    <label class="f"><span class="lbl">Prezzo utile di acquisto</span><input id="fTarget" class="num" inputmode="decimal" placeholder="facoltativo"></label>
+    <div class="err" id="fErr" hidden></div>
+    <button class="primary" type="submit">Salva</button>
+  </form>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const $=id=>document.getElementById(id);
+const LS="diario-trading-v1";
+let trades=[], col=null, editId=null, armed=null;
+
+const num=s=>{ if(typeof s==="number")return s; s=String(s??"").trim().replace(/\s/g,""); if(!s)return NaN;
+  if(s.includes(",")) s=s.replace(/\./g,"").replace(",","."); return Number(s); };
+const eur=n=>n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";
+const sgn=n=>(n>0?"+":"")+eur(n);
+const px=n=>n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:4});
+const pct=n=>(n>0?"+":"")+n.toLocaleString("it-IT",{minimumFractionDigits:2,maximumFractionDigits:2})+"%";
+const cls=n=>n>0?"pos":n<0?"neg":"";
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const monthName=k=>new Date(k+"-01T12:00:00").toLocaleDateString("it-IT",{month:"long",year:"numeric"});
+function calc(t){ const inv=t.qty*t.buy, closed=typeof t.sell==="number"&&!isNaN(t.sell);
+  const out=closed?t.qty*t.sell:null; return {inv,out,closed,gain:closed?out-inv:null}; }
+
+function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,1400)}
+
+function render(){
+  const key=t=>calc(t).closed?(t.date||""):"9999";
+  const list=[...trades].sort((a,b)=>key(b).localeCompare(key(a))||(b.ts||0)-(a.ts||0));
+  // riepilogo
+  const months={}; let tot=0,totInv=0,nClosed=0;
+  for(const t of list){const c=calc(t); if(!c.closed)continue; const k=(t.date||today()).slice(0,7);
+    const m=months[k]??={gain:0,inv:0,n:0}; m.gain+=c.gain; m.inv+=c.inv; m.n++; tot+=c.gain; totInv+=c.inv; nClosed++;}
+  const cur=months[today().slice(0,7)];
+  $("sMonthLbl").textContent=monthName(today().slice(0,7));
+  $("sMonth").textContent=sgn(cur?cur.gain:0); $("sMonth").className="num "+cls(cur?cur.gain:0);
+  $("sMonthCap").textContent=cur?"su "+eur(cur.inv)+" investiti":"nessuna operazione chiusa";
+  $("sTot").textContent=sgn(tot); $("sTot").className="num "+cls(tot);
+  $("sTotCap").textContent=nClosed+(nClosed===1?" operazione chiusa":" operazioni chiuse");
+
+  // operazioni
+  $("ops").innerHTML=list.length?list.map(t=>{const c=calc(t);
+    const pill=c.closed?`<span class="pill ${cls(c.gain)}">${sgn(c.gain)}<br><small>${c.inv?pct(c.gain/c.inv*100):""}</small></span>`:`<span class="pill open">Aperta</span>`;
+    return `<div class="card ${c.closed?(c.gain>0?"g":c.gain<0?"l":""):""}">
+      <div class="top"><div><div class="name">${esc(t.name)}</div><div class="date">${c.closed&&t.date?"Uscita "+new Date(t.date+"T12:00:00").toLocaleDateString("it-IT"):""}</div></div>${pill}</div>
+      ${t.isin?`<button type="button" class="isin" data-copy="${esc(t.isin)}"><span class="num">${esc(t.isin)}</span><span>Copia</span></button>`:""}
+      <div class="grid">
+        <div><span class="lbl">Quote</span><span class="num">${px(t.qty)}</span></div>
+        <div><span class="lbl">Prezzo medio</span><span class="num">${px(t.buy)}</span></div>
+        <div><span class="lbl">Investiti</span><span class="num">${eur(c.inv)}</span></div>
+        <div><span class="lbl">Prezzo uscita</span><span class="num">${c.closed?px(t.sell):"—"}</span></div>
+        <div><span class="lbl">Disinvestiti</span><span class="num">${c.closed?eur(c.out):"—"}</span></div>
+        <div><span class="lbl">Prezzo utile acquisto</span><span class="num">${typeof t.target==="number"?px(t.target):"—"}</span></div>
+      </div>
+      <div class="acts"><button type="button" data-edit="${t.id}">Modifica</button>
+      <button type="button" data-del="${t.id}" class="${armed===t.id?"danger":""}">${armed===t.id?"Conferma eliminazione":"Elimina"}</button></div>
+    </div>`}).join(""):`<div class="empty">Nessuna operazione.<br>Tocca “Nuova operazione” per inserire la prima.</div>`;
+
+  // mesi
+  const keys=Object.keys(months).sort().reverse();
+  const maxAbs=Math.max(1,...keys.map(k=>Math.abs(months[k].gain)));
+  $("months").innerHTML=keys.length?keys.map(k=>{const m=months[k];
+    return `<div class="month">
+      <div class="top"><h2>${monthName(k)}</h2><span class="num ${cls(m.gain)}">${sgn(m.gain)}</span></div>
+      <div class="bar"><i class="${cls(m.gain)}" style="width:${Math.abs(m.gain)/maxAbs*100}%"></i></div>
+      <div class="grid">
+        <div><span class="lbl">Capitale investito</span><span class="num">${eur(m.inv)}</span></div>
+        <div><span class="lbl">Rendimento</span><span class="num ${cls(m.gain)}">${m.inv?pct(m.gain/m.inv*100):"—"}</span></div>
+        <div><span class="lbl">Operazioni chiuse</span><span class="num">${m.n}</span></div>
+      </div></div>`}).join(""):`<div class="empty">Qui compaiono i guadagni mese per mese, con il capitale investito per ottenerli, appena chiudi un’operazione.</div>`;
+}
+
+// ---- modulo
+function live(){
+  const q=num($("fQty").value),b=num($("fBuy").value),s=num($("fSell").value);
+  const inv=q*b,out=q*s;
+  if(!isNaN(s)&&!$("fDate").value)$("fDate").value=today();
+  $("cInv").textContent=isNaN(inv)?"—":eur(inv);
+  $("cOut").textContent=isNaN(out)?"—":eur(out);
+  const g=out-inv, el=$("cGain");
+  el.textContent=isNaN(g)?"—":sgn(g)+(inv?"  ("+pct(g/inv*100)+")":"");
+  el.className="calc big num "+(isNaN(g)?"":cls(g));
+}
+function openForm(t){
+  editId=t?t.id:null; $("formTitle").textContent=t?"Modifica operazione":"Nuova operazione";
+  const v=n=>typeof n==="number"&&!isNaN(n)?String(n).replace(".",","):"";
+  $("fName").value=t?t.name:""; $("fIsin").value=t?t.isin||"":""; $("fDate").value=t&&calc(t).closed?t.date||"":"";
+  $("fQty").value=t?v(t.qty):""; $("fBuy").value=t?v(t.buy):""; $("fSell").value=t?v(t.sell):""; $("fTarget").value=t?v(t.target):"";
+  $("fErr").hidden=true; live(); $("sheet").hidden=false; $("sheet").scrollTop=0; if(!t)$("fName").focus();
+}
+["fQty","fBuy","fSell"].forEach(i=>$(i).addEventListener("input",live));
+$("addBtn").onclick=()=>openForm(null);
+$("cancelBtn").onclick=()=>$("sheet").hidden=true;
+$("form").addEventListener("submit",async e=>{
+  e.preventDefault();
+  const qty=num($("fQty").value),buy=num($("fBuy").value),sell=num($("fSell").value),target=num($("fTarget").value);
+  const err=m=>{$("fErr").textContent=m;$("fErr").hidden=false};
+  if(!(qty>0))return err("Inserisci un numero di quote maggiore di zero.");
+  if(!(buy>=0))return err("Inserisci il prezzo medio.");
+  if($("fSell").value.trim()&&isNaN(sell))return err("Il prezzo di uscita non è un numero valido.");
+  if($("fTarget").value.trim()&&isNaN(target))return err("Il prezzo utile di acquisto non è un numero valido.");
+  const old=trades.find(t=>t.id===editId);
+  const d={name:$("fName").value.trim(),isin:$("fIsin").value.trim().toUpperCase(),date:isNaN(sell)?"":($("fDate").value||today()),qty,buy,ts:old?old.ts:Date.now()};
+  if(!isNaN(sell))d.sell=sell; if(!isNaN(target))d.target=target;
+  try{ await save(editId,d); $("sheet").hidden=true; toast("Salvata"); }
+  catch(x){ err(x&&x.code==="quota_exceeded"?"Spazio esaurito: elimina qualche operazione vecchia.":"Salvataggio non riuscito. Riprova tra poco."); }
+});
+
+// ---- lista: copia, modifica, elimina
+$("ops").addEventListener("click",async e=>{
+  const b=e.target.closest("button"); if(!b)return;
+  if(b.dataset.copy){ try{await navigator.clipboard.writeText(b.dataset.copy);toast("ISIN copiato")}
+    catch{const r=document.createRange();r.selectNodeContents(b.firstElementChild);const s=getSelection();s.removeAllRanges();s.addRange(r);toast("Selezionato: copia a mano")} }
+  else if(b.dataset.edit) openForm(trades.find(t=>t.id===b.dataset.edit));
+  else if(b.dataset.del){ const id=b.dataset.del;
+    if(armed!==id){armed=id;render();setTimeout(()=>{if(armed===id){armed=null;render()}},3000);return}
+    armed=null; try{await remove(id);toast("Eliminata")}catch{toast("Eliminazione non riuscita")} }
+});
+
+// ---- schede
+function tab(m){ $("ops").hidden=m; $("months").hidden=!m; $("tabOps").setAttribute("aria-selected",!m); $("tabMonths").setAttribute("aria-selected",m); }
+$("tabOps").onclick=()=>tab(false); $("tabMonths").onclick=()=>tab(true);
+if(location.hash==="#mesi")tab(true);
+
+// ---- archivio: database privato dell'utente, altrimenti memoria del browser
+function lsRead(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch{return[]}}
+function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(trades))}catch{}}
+async function save(id,d){
+  if(col){ try{ const ref=id?col.doc(id):col.doc(); await ref.set(d); return; }
+    catch(x){ if(!x||x.code!=="invalid_argument"||trades.length) throw x; localMode(); id=null; } }
+  if(id) trades=trades.map(t=>t.id===id?{...d,id}:t); else trades.push({...d,id:"l"+Date.now()});
+  lsWrite(); render();
+}
+async function remove(id){
+  if(col){ await col.doc(id).delete(); return; }
+  trades=trades.filter(t=>t.id!==id); lsWrite(); render();
+}
+function localMode(){ col=null; trades=lsRead(); render();
+  $("storeNote").textContent="Le operazioni sono salvate su questo telefono. Fai un backup ogni tanto."; $("storeNote").hidden=false; }
+
+// ---- backup
+$("expBtn").onclick=()=>{
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(trades,null,1)],{type:"application/json"}));
+  a.download="diario-trading-"+today()+".json"; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),5000); toast("Backup esportato");
+};
+$("impBtn").onclick=()=>$("impFile").click();
+$("impFile").onchange=async e=>{
+  const f=e.target.files[0]; e.target.value=""; if(!f)return;
+  try{ const arr=JSON.parse(await f.text()); if(!Array.isArray(arr))throw 0;
+    const ids=new Set(trades.map(t=>t.id)); let n=0;
+    for(const t of arr){ if(!t||typeof t.name!=="string"||typeof t.qty!=="number"||typeof t.buy!=="number")continue;
+      if(!t.id)t.id="i"+Date.now()+"_"+n; if(ids.has(t.id))continue; ids.add(t.id); trades.push(t); n++; }
+    lsWrite(); render(); toast(n+" operazioni importate");
+  }catch{ toast("File di backup non valido"); }
+};
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+
+render();
+(async()=>{
+  try{
+    const c=window.claude; if(!c||!c.use) return localMode();
+    const [user,db]=await Promise.all([c.use("user"),c.use("db")]);
+    const uid=user?await user.id():null;
+    if(!db||!uid) return localMode();
+    col=db.collection("data/users/"+uid);
+    col.onSnapshot(s=>{ trades=s.docs.map(d=>({...d.data(),id:d.id})); render(); }, ()=>localMode());
+  }catch{ localMode(); }
+})();
+</script>
+</body>
+</html>
