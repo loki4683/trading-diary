@@ -8,7 +8,27 @@
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="theme-color" content="#0e1319">
-<style>html{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}body{margin:0}[hidden]{display:none!important}</style>
+<style>html{padding:env(safe-area-inset-top,0) 0 env(safe-area-inset-bottom,0)}body{margin:0}[hidden]{display:none!important}.sum.wide{grid-column:1/-1}
+h3.sec{margin:6px 0 0;font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+.mgroup{background:var(--surface);border:1px solid var(--line);border-radius:10px}
+.mgroup summary{display:flex;gap:10px;align-items:baseline;padding:12px;cursor:pointer;list-style:none}
+.mgroup summary::-webkit-details-marker{display:none}
+.mgroup summary::before{content:"›";color:var(--muted);transition:transform .15s}
+.mgroup[open] summary::before{transform:rotate(90deg)}
+.mgroup summary span:first-of-type{font-weight:600;text-transform:capitalize;flex:1}
+.mgroup>.list{padding:0 8px 8px}
+.moves{display:flex;flex-direction:column;gap:4px;border-top:1px solid var(--line);padding-top:8px}
+.mv{display:flex;gap:8px;align-items:baseline;font-size:13px;flex-wrap:wrap}
+.mv .num{font-size:13px}
+.tag{font-family:var(--mono);font-size:11px;font-weight:600;padding:1px 6px;border-radius:4px}
+.tag.ent{background:var(--surface2);color:var(--accent)} .tag.usc{background:var(--surface2);color:var(--fg)}
+.acts{flex-wrap:wrap}
+.acts button.mvbtn{color:var(--accent);border-color:var(--accent)}
+.seg{display:flex;background:var(--surface2);border-radius:10px;padding:3px;gap:3px}
+.seg button{flex:1;border:0;background:transparent;padding:10px;border-radius:8px;font-weight:600;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg)}
+input[readonly]{opacity:.6}
+</style>
 <style>
 /* Layout: una colonna da telefono. Riepilogo in alto, due schede (Operazioni / Mesi), modulo a comparsa dal basso. */
 :root{
@@ -99,6 +119,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   <h1>Diario di Trading</h1>
 
   <div class="summary">
+    <div class="sum wide"><span class="lbl">Investito ora</span><span class="num" id="sOpen">0,00 €</span><small id="sOpenCap">nessuna posizione aperta</small></div>
     <div class="sum"><span class="lbl" id="sMonthLbl">Questo mese</span><span class="num" id="sMonth">0,00 €</span><small id="sMonthCap">nessuna operazione chiusa</small></div>
     <div class="sum"><span class="lbl">Totale</span><span class="num" id="sTot">0,00 €</span><small id="sTotCap">0 operazioni chiuse</small></div>
   </div>
@@ -128,12 +149,13 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <label class="f"><span class="lbl">Nome titolo</span><input id="fName" required></label>
     <div class="row">
       <label class="f"><span class="lbl">ISIN</span><input id="fIsin" class="num" autocapitalize="characters" maxlength="12" spellcheck="false"></label>
-      <label class="f"><span class="lbl">Data di acquisto</span><input id="fIn" type="date"></label>
+      <label class="f"><span class="lbl">Data ultimo movimento</span><input id="fIn" type="date"></label>
     </div>
     <div class="row">
       <label class="f"><span class="lbl">Quote prese</span><input id="fQty" class="num" inputmode="decimal" required></label>
       <label class="f"><span class="lbl">Prezzo medio</span><input id="fBuy" class="num" inputmode="decimal" required></label>
     </div>
+    <p class="note" id="fLock" hidden style="text-align:left">Quote, prezzo medio e data sono aggiornati dai movimenti ENT/USC. Per cambiarli usa “Annulla ultimo”.</p>
     <div class="f"><span class="lbl">Euro investiti</span><div class="calc num" id="cInv">—</div></div>
     <div class="row">
       <label class="f"><span class="lbl">Prezzo di uscita</span><input id="fSell" class="num" inputmode="decimal" placeholder="vuoto = aperta"></label>
@@ -146,12 +168,28 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button class="primary" type="submit">Salva</button>
   </form>
 </div>
+<div class="sheet" id="msheet" hidden>
+  <form id="mform" autocomplete="off">
+    <header><h1>Nuovo movimento</h1><button type="button" id="mCancel">Annulla</button></header>
+    <div><div class="name" id="mTitle"></div><div class="date">Posizione attuale: <span class="num" id="mPos"></span></div></div>
+    <div class="seg"><button type="button" id="mEnt" aria-pressed="true">ENT · Entrata</button><button type="button" id="mUsc" aria-pressed="false">USC · Uscita</button></div>
+    <div class="row">
+      <label class="f"><span class="lbl">Quote</span><input id="mQty" class="num" inputmode="decimal" required></label>
+      <label class="f"><span class="lbl">Prezzo</span><input id="mPrice" class="num" inputmode="decimal" required></label>
+    </div>
+    <label class="f"><span class="lbl">Data</span><input id="mDate" type="date"></label>
+    <div class="f"><span class="lbl">Nuova posizione</span><div class="calc num" id="mNew">—</div></div>
+    <div class="f" hidden><span class="lbl">Guadagno realizzato</span><div class="calc num" id="mGain">—</div></div>
+    <div class="err" id="mErr" hidden></div>
+    <button class="primary" type="submit">Registra movimento</button>
+  </form>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
 const $=id=>document.getElementById(id);
 const LS="diario-trading-v1";
-let trades=[], col=null, editId=null, armed=null;
+let trades=[], editId=null, moveId=null, moveType="ENT", armed=null;
 
 const num=s=>{ if(typeof s==="number")return s; s=String(s??"").trim().replace(/\s/g,""); if(!s)return NaN;
   if(s.includes(",")) s=s.replace(/\./g,"").replace(",","."); return Number(s); };
@@ -162,57 +200,87 @@ const pct=n=>(n>0?"+":"")+n.toLocaleString("it-IT",{minimumFractionDigits:2,maxi
 const cls=n=>n>0?"pos":n<0?"neg":"";
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const today=()=>{const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")};
+const itDate=d=>d?new Date(d+"T12:00:00").toLocaleDateString("it-IT"):"";
 const monthName=k=>new Date(k+"-01T12:00:00").toLocaleDateString("it-IT",{month:"long",year:"numeric"});
+const v=n=>typeof n==="number"&&!isNaN(n)?String(n).replace(".",","):"";
+
+// Posizione corrente: qty e buy sono le quote e il prezzo medio attuali, aggiornati dai movimenti.
 function calc(t){ const inv=t.qty*t.buy, closed=typeof t.sell==="number"&&!isNaN(t.sell);
   const out=closed?t.qty*t.sell:null; return {inv,out,closed,gain:closed?out-inv:null}; }
+// Ogni realizzo (uscite parziali e chiusura finale) con data, guadagno e capitale impegnato.
+function events(t){
+  const ev=(t.moves||[]).filter(m=>m.type==="USC"&&!m.final).map(m=>({date:m.date,gain:m.gain,inv:m.cost,din:m.from}));
+  const c=calc(t); if(c.closed) ev.push({date:t.date||today(),gain:c.gain,inv:c.inv,din:t.din});
+  return ev;
+}
+const totalGain=t=>events(t).reduce((s,e)=>s+e.gain,0);
 
-// Esposizione giorno per giorno delle operazioni chiuse nel mese: massimo e media sul periodo coperto.
 const dayN=d=>Math.round(Date.parse(d+"T00:00:00Z")/864e5);
 function expo(list){
-  const iv=list.map(t=>{const out=dayN(t.date||today()); let a=dayN(t.din||t.date||today()); if(!(a<=out))a=out; return {a,out,inv:t.qty*t.buy}});
+  const iv=list.map(e=>{const out=dayN(e.date||today()); let a=dayN(e.din||e.date||today()); if(!(a<=out))a=out; return {a,out,inv:e.inv}});
   const a=Math.min(...iv.map(x=>x.a)), b=Math.max(...iv.map(x=>x.out)); let max=0,sum=0;
   for(let d=a;d<=b;d++){let e=0; for(const x of iv) if(x.a<=d&&d<=x.out) e+=x.inv; sum+=e; if(e>max)max=e;}
   return {max,avg:sum/(b-a+1)};
 }
-function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,1400)}
+
+function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,1600)}
+
+function card(t){
+  const c=calc(t), g=totalGain(t), hasEv=events(t).length>0;
+  let pill;
+  if(c.closed) pill=`<span class="pill ${cls(g)}">${sgn(g)}<br><small>${(()=>{const iv=events(t).reduce((s,e)=>s+e.inv,0);return iv?pct(g/iv*100):""})()}</small></span>`;
+  else pill=`<span class="pill open">Aperta${hasEv?`<br><small class="${cls(g)}">realizzati ${sgn(g)}</small>`:""}</span>`;
+  const moves=(t.moves||[]).length?`<div class="moves">${t.moves.map(m=>`<div class="mv"><span class="tag ${m.type==="ENT"?"ent":"usc"}">${m.type}</span><span class="num">${px(m.qty)} × ${px(m.price)}</span><span class="date">${itDate(m.date)}</span>${m.type==="USC"&&!m.final?`<span class="num ${cls(m.gain)}">${sgn(m.gain)}</span>`:""}</div>`).join("")}</div>`:"";
+  return `<div class="card ${c.closed?(g>0?"g":g<0?"l":""):""}">
+    <div class="top"><div><div class="name">${esc(t.name)}</div><div class="date">${t.din?(t.moves&&t.moves.length>1?"Ultimo movimento ":"Acquisto ")+itDate(t.din)+(c.closed?" · ":""):""}${c.closed&&t.date?"Uscita "+itDate(t.date):""}</div></div>${pill}</div>
+    ${t.isin?`<button type="button" class="isin" data-copy="${esc(t.isin)}"><span class="num">${esc(t.isin)}</span><span>Copia</span></button>`:""}
+    <div class="grid">
+      <div><span class="lbl">Quote</span><span class="num">${px(t.qty)}</span></div>
+      <div><span class="lbl">Prezzo medio</span><span class="num">${px(t.buy)}</span></div>
+      <div><span class="lbl">Investiti</span><span class="num">${eur(c.inv)}</span></div>
+      <div><span class="lbl">Prezzo uscita</span><span class="num">${c.closed?px(t.sell):"—"}</span></div>
+      <div><span class="lbl">Disinvestiti</span><span class="num">${c.closed?eur(c.out):"—"}</span></div>
+      <div><span class="lbl">Prezzo utile acquisto</span><span class="num">${typeof t.target==="number"?px(t.target):"—"}</span></div>
+    </div>
+    ${moves}
+    <div class="acts">${!c.closed?`<button type="button" class="mvbtn" data-move="${t.id}">+ Movimento</button>`:""}${!c.closed&&(t.moves||[]).length>1?`<button type="button" data-undo="${t.id}">Annulla ultimo</button>`:""}<button type="button" data-edit="${t.id}">Modifica</button>
+    <button type="button" data-del="${t.id}" class="${armed===t.id?"danger":""}">${armed===t.id?"Conferma":"Elimina"}</button></div>
+  </div>`;
+}
 
 function render(){
-  const key=t=>calc(t).closed?(t.date||""):"9999";
-  const list=[...trades].sort((a,b)=>key(b).localeCompare(key(a))||(b.ts||0)-(a.ts||0));
-  // riepilogo
-  const months={}; let tot=0,totInv=0,nClosed=0;
-  for(const t of list){const c=calc(t); if(!c.closed)continue; const k=(t.date||today()).slice(0,7);
-    const m=months[k]??={gain:0,inv:0,n:0}; m.gain+=c.gain; m.inv+=c.inv; m.n++; (m.tr??=[]).push(t); tot+=c.gain; totInv+=c.inv; nClosed++;}
-  for(const k in months)Object.assign(months[k],expo(months[k].tr));
-  const cur=months[today().slice(0,7)];
-  $("sMonthLbl").textContent=monthName(today().slice(0,7));
+  const curK=today().slice(0,7);
+  const months={}; let tot=0,nEv=0,open=0,nOpen=0;
+  for(const t of trades){
+    const c=calc(t); if(!c.closed){open+=c.inv;nOpen++;}
+    for(const e of events(t)){const k=(e.date||today()).slice(0,7);
+      const m=months[k]??={gain:0,n:0,ev:[]}; m.gain+=e.gain; m.n++; m.ev.push(e); tot+=e.gain; nEv++;}
+  }
+  for(const k in months)Object.assign(months[k],expo(months[k].ev));
+  const cur=months[curK];
+  $("sOpen").textContent=eur(open);
+  $("sOpenCap").textContent=nOpen?nOpen+(nOpen===1?" posizione aperta":" posizioni aperte"):"nessuna posizione aperta";
+  $("sMonthLbl").textContent=monthName(curK);
   $("sMonth").textContent=sgn(cur?cur.gain:0); $("sMonth").className="num "+cls(cur?cur.gain:0);
-  $("sMonthCap").textContent=cur?"esposizione max "+eur(cur.max):"nessuna operazione chiusa";
+  $("sMonthCap").textContent=cur?"esposizione max "+eur(cur.max):"nessuna chiusura";
   $("sTot").textContent=sgn(tot); $("sTot").className="num "+cls(tot);
-  $("sTotCap").textContent=nClosed+(nClosed===1?" operazione chiusa":" operazioni chiuse");
+  $("sTotCap").textContent=nEv+(nEv===1?" chiusura":" chiusure");
 
-  // operazioni
-  $("ops").innerHTML=list.length?list.map(t=>{const c=calc(t);
-    const pill=c.closed?`<span class="pill ${cls(c.gain)}">${sgn(c.gain)}<br><small>${c.inv?pct(c.gain/c.inv*100):""}</small></span>`:`<span class="pill open">Aperta</span>`;
-    return `<div class="card ${c.closed?(c.gain>0?"g":c.gain<0?"l":""):""}">
-      <div class="top"><div><div class="name">${esc(t.name)}</div><div class="date">${t.din?"Acquisto "+new Date(t.din+"T12:00:00").toLocaleDateString("it-IT")+(c.closed?" · ":""):""}${c.closed&&t.date?"Uscita "+new Date(t.date+"T12:00:00").toLocaleDateString("it-IT"):""}</div></div>${pill}</div>
-      ${t.isin?`<button type="button" class="isin" data-copy="${esc(t.isin)}"><span class="num">${esc(t.isin)}</span><span>Copia</span></button>`:""}
-      <div class="grid">
-        <div><span class="lbl">Quote</span><span class="num">${px(t.qty)}</span></div>
-        <div><span class="lbl">Prezzo medio</span><span class="num">${px(t.buy)}</span></div>
-        <div><span class="lbl">Investiti</span><span class="num">${eur(c.inv)}</span></div>
-        <div><span class="lbl">Prezzo uscita</span><span class="num">${c.closed?px(t.sell):"—"}</span></div>
-        <div><span class="lbl">Disinvestiti</span><span class="num">${c.closed?eur(c.out):"—"}</span></div>
-        <div><span class="lbl">Prezzo utile acquisto</span><span class="num">${typeof t.target==="number"?px(t.target):"—"}</span></div>
-      </div>
-      <div class="acts"><button type="button" data-edit="${t.id}">Modifica</button>
-      <button type="button" data-del="${t.id}" class="${armed===t.id?"danger":""}">${armed===t.id?"Conferma eliminazione":"Elimina"}</button></div>
-    </div>`}).join(""):`<div class="empty">Nessuna operazione.<br>Tocca “Nuova operazione” per inserire la prima.</div>`;
+  // Operazioni: aperte, poi chiuse del mese corrente, poi i mesi passati raggruppati.
+  const openL=trades.filter(t=>!calc(t).closed).sort((a,b)=>(b.din||"").localeCompare(a.din||"")||(b.ts||0)-(a.ts||0));
+  const closedL=trades.filter(t=>calc(t).closed).sort((a,b)=>(b.date||"").localeCompare(a.date||"")||(b.ts||0)-(a.ts||0));
+  const byM={}; for(const t of closedL)(byM[(t.date||today()).slice(0,7)]??=[]).push(t);
+  let h="";
+  if(openL.length) h+=`<h3 class="sec">Aperte</h3>`+openL.map(card).join("");
+  if(byM[curK]) h+=`<h3 class="sec">Chiuse a ${monthName(curK)}</h3>`+byM[curK].map(card).join("");
+  for(const k of Object.keys(byM).filter(k=>k!==curK).sort().reverse()){
+    const g=byM[k].reduce((s,t)=>s+calc(t).gain,0);
+    h+=`<details class="mgroup"><summary><span>${monthName(k)}</span><span class="date">${byM[k].length} ${byM[k].length===1?"chiusa":"chiuse"}</span><span class="num ${cls(g)}">${sgn(g)}</span></summary><div class="list">${byM[k].map(card).join("")}</div></details>`;
+  }
+  $("ops").innerHTML=h||`<div class="empty">Nessuna operazione.<br>Tocca “Nuova operazione” per inserire la prima.</div>`;
 
-  // mesi
   const keys=Object.keys(months).sort().reverse();
   const maxAbs=Math.max(1,...keys.map(k=>Math.abs(months[k].gain)));
-  renderTitles();
   $("months").innerHTML=keys.length?keys.map(k=>{const m=months[k];
     return `<div class="month">
       <div class="top"><h2>${monthName(k)}</h2><span class="num ${cls(m.gain)}">${sgn(m.gain)}</span></div>
@@ -221,8 +289,9 @@ function render(){
         <div><span class="lbl">Capitale medio</span><span class="num">${eur(m.avg)}</span></div>
         <div><span class="lbl">Massima esposizione</span><span class="num">${eur(m.max)}</span></div>
         <div><span class="lbl">Rendimento su max</span><span class="num ${cls(m.gain)}">${m.max?pct(m.gain/m.max*100):"—"}</span></div>
-        <div><span class="lbl">Operazioni chiuse</span><span class="num">${m.n}</span></div>
-      </div></div>`}).join(""):`<div class="empty">Qui compaiono i guadagni mese per mese, con il capitale investito per ottenerli, appena chiudi un’operazione.</div>`;
+        <div><span class="lbl">Chiusure</span><span class="num">${m.n}</span></div>
+      </div></div>`}).join(""):`<div class="empty">Qui compaiono i guadagni mese per mese, con il capitale impiegato per ottenerli, appena chiudi un’operazione.</div>`;
+  renderTitles();
 }
 
 function renderTitles(){
@@ -230,7 +299,7 @@ function renderTitles(){
   for(const t of [...trades].sort((a,b)=>(a.ts||0)-(b.ts||0))){
     const k=t.isin||t.name.trim().toLowerCase(), c=calc(t);
     const x=g[k]??={name:t.name,isin:t.isin||"",n:0,open:0,gain:0,target:null,buy:t.buy};
-    x.name=t.name; x.buy=t.buy; x.n++; if(c.closed)x.gain+=c.gain; else x.open++;
+    x.name=t.name; x.buy=t.buy; x.n++; x.gain+=totalGain(t); if(!c.closed)x.open++;
     if(typeof t.target==="number")x.target=t.target;
   }
   const arr=Object.values(g).sort((a,b)=>a.name.localeCompare(b.name,"it"));
@@ -244,7 +313,7 @@ function renderTitles(){
     </div></div>`).join(""):`<div class="empty">Qui compare l’elenco dei titoli che hai trattato, con il loro prezzo utile di acquisto.</div>`;
 }
 
-// ---- modulo
+// ---- modulo operazione
 function live(){
   const q=num($("fQty").value),b=num($("fBuy").value),s=num($("fSell").value);
   const inv=q*b,out=q*s;
@@ -257,15 +326,18 @@ function live(){
 }
 function openForm(t){
   editId=t?t.id:null; $("formTitle").textContent=t?"Modifica operazione":"Nuova operazione";
-  const v=n=>typeof n==="number"&&!isNaN(n)?String(n).replace(".",","):"";
-  $("fName").value=t?t.name:""; $("fIsin").value=t?t.isin||"":""; $("fDate").value=t&&calc(t).closed?t.date||"":""; $("fIn").value=t?t.din||"":today();
+  const locked=!!(t&&t.moves&&t.moves.length>1);
+  $("fName").value=t?t.name:""; $("fIsin").value=t?t.isin||"":"";
+  $("fDate").value=t&&calc(t).closed?t.date||"":""; $("fIn").value=t?t.din||"":today();
   $("fQty").value=t?v(t.qty):""; $("fBuy").value=t?v(t.buy):""; $("fSell").value=t?v(t.sell):""; $("fTarget").value=t?v(t.target):"";
+  for(const i of ["fQty","fBuy","fIn"]) $(i).readOnly=locked;
+  $("fLock").hidden=!locked;
   $("fErr").hidden=true; live(); $("sheet").hidden=false; $("sheet").scrollTop=0; if(!t)$("fName").focus();
 }
 ["fQty","fBuy","fSell"].forEach(i=>$(i).addEventListener("input",live));
 $("addBtn").onclick=()=>openForm(null);
 $("cancelBtn").onclick=()=>$("sheet").hidden=true;
-$("form").addEventListener("submit",async e=>{
+$("form").addEventListener("submit",e=>{
   e.preventDefault();
   const qty=num($("fQty").value),buy=num($("fBuy").value),sell=num($("fSell").value),target=num($("fTarget").value);
   const err=m=>{$("fErr").textContent=m;$("fErr").hidden=false};
@@ -273,23 +345,73 @@ $("form").addEventListener("submit",async e=>{
   if(!(buy>=0))return err("Inserisci il prezzo medio.");
   if($("fSell").value.trim()&&isNaN(sell))return err("Il prezzo di uscita non è un numero valido.");
   if($("fTarget").value.trim()&&isNaN(target))return err("Il prezzo utile di acquisto non è un numero valido.");
-  if(!isNaN(sell)&&$("fIn").value&&$("fDate").value&&$("fDate").value<$("fIn").value)return err("La data di uscita è precedente alla data di acquisto.");
+  if(!isNaN(sell)&&$("fIn").value&&$("fDate").value&&$("fDate").value<$("fIn").value)return err("La data di uscita è precedente alla data dell’ultimo movimento.");
   const old=trades.find(t=>t.id===editId);
-  const d={name:$("fName").value.trim(),isin:$("fIsin").value.trim().toUpperCase(),date:isNaN(sell)?"":($("fDate").value||today()),qty,buy,din:$("fIn").value||"",ts:old?old.ts:Date.now()};
+  const d={...(old||{}),name:$("fName").value.trim(),isin:$("fIsin").value.trim().toUpperCase(),date:isNaN(sell)?"":($("fDate").value||today()),qty,buy,din:$("fIn").value||"",ts:old?old.ts:Date.now()};
+  delete d.sell; delete d.target;
   if(!isNaN(sell))d.sell=sell; if(!isNaN(target))d.target=target;
-  try{ await save(editId,d); $("sheet").hidden=true; toast("Salvata"); }
-  catch(x){ err(x&&x.code==="quota_exceeded"?"Spazio esaurito: elimina qualche operazione vecchia.":"Salvataggio non riuscito. Riprova tra poco."); }
+  if(d.moves&&d.moves.length===1) d.moves=[{...d.moves[0],qty,price:buy,date:d.din}];
+  if(old) trades=trades.map(t=>t.id===editId?{...d,id:editId}:t); else trades.push({...d,id:"l"+Date.now()});
+  lsWrite(); render(); $("sheet").hidden=true; toast("Salvata");
 });
 
-// ---- lista: copia, modifica, elimina
+// ---- movimenti ENT / USC su una posizione aperta
+function setType(tp){ moveType=tp; $("mEnt").setAttribute("aria-pressed",tp==="ENT"); $("mUsc").setAttribute("aria-pressed",tp==="USC"); mLive(); }
+function openMove(t){
+  moveId=t.id; $("mTitle").textContent=t.name; $("mPos").textContent=px(t.qty)+" quote a "+px(t.buy);
+  $("mQty").value=""; $("mPrice").value=""; $("mDate").value=today(); $("mErr").hidden=true;
+  setType("ENT"); $("msheet").hidden=false; $("msheet").scrollTop=0;
+}
+function mCalc(){
+  const t=trades.find(x=>x.id===moveId); const q=num($("mQty").value),p=num($("mPrice").value);
+  if(!t||!(q>0)||!(p>=0))return null;
+  if(moveType==="ENT"){const nq=t.qty+q; return {t,q,p,nq,navg:(t.qty*t.buy+q*p)/nq};}
+  return {t,q,p,nq:t.qty-q,navg:t.buy,gain:q*(p-t.buy)};
+}
+function mLive(){
+  const r=mCalc();
+  $("mNew").textContent=!r?"—":r.nq<=0?"Posizione chiusa":px(r.nq)+" quote a "+px(r.navg);
+  const g=$("mGain"); g.parentElement.hidden=moveType!=="USC";
+  g.textContent=r&&moveType==="USC"?sgn(r.gain):"—"; g.className="calc num "+(r&&moveType==="USC"?cls(r.gain):"");
+}
+["mQty","mPrice"].forEach(i=>$(i).addEventListener("input",mLive));
+$("mEnt").onclick=()=>setType("ENT"); $("mUsc").onclick=()=>setType("USC");
+$("mCancel").onclick=()=>$("msheet").hidden=true;
+$("mform").addEventListener("submit",e=>{
+  e.preventDefault();
+  const err=m=>{$("mErr").textContent=m;$("mErr").hidden=false};
+  const r=mCalc(); if(!r)return err("Inserisci quote maggiori di zero e un prezzo valido.");
+  const date=$("mDate").value||today(), t=r.t;
+  if(t.din&&date<t.din)return err("La data è precedente all’ultimo movimento ("+itDate(t.din)+").");
+  if(moveType==="USC"&&r.q>t.qty+1e-9)return err("Stai vendendo più quote di quelle in portafoglio ("+px(t.qty)+").");
+  const n={...t,moves:[...(t.moves&&t.moves.length?t.moves:[{type:"ENT",qty:t.qty,price:t.buy,date:t.din||""}])]};
+  const prev={qty:t.qty,buy:t.buy,din:t.din||""};
+  if(moveType==="ENT"){ n.moves.push({type:"ENT",qty:r.q,price:r.p,date,prev}); n.qty=r.nq; n.buy=r.navg; n.din=date; }
+  else if(r.nq<=1e-9){ n.moves.push({type:"USC",qty:r.q,price:r.p,date,prev,final:true}); n.sell=r.p; n.date=date; }
+  else { n.moves.push({type:"USC",qty:r.q,price:r.p,date,prev,gain:r.gain,cost:r.q*t.buy,from:t.din||date}); n.qty=r.nq; n.din=date; }
+  trades=trades.map(x=>x.id===t.id?n:x); lsWrite(); render(); $("msheet").hidden=true;
+  toast(moveType==="ENT"?"Entrata registrata":r.nq<=1e-9?"Posizione chiusa":"Uscita registrata");
+});
+function undoMove(id){
+  const t=trades.find(x=>x.id===id); if(!t||!t.moves||t.moves.length<2)return;
+  const m=t.moves[t.moves.length-1], n={...t,moves:t.moves.slice(0,-1),...m.prev};
+  if(m.final){delete n.sell; n.date="";}
+  trades=trades.map(x=>x.id===id?n:x); lsWrite(); render(); toast("Movimento annullato");
+}
+
+// ---- clic sulle schede
 document.querySelector(".wrap").addEventListener("click",async e=>{
   const b=e.target.closest("button"); if(!b)return;
   if(b.dataset.copy){ try{await navigator.clipboard.writeText(b.dataset.copy);toast("ISIN copiato")}
     catch{const r=document.createRange();r.selectNodeContents(b.firstElementChild);const s=getSelection();s.removeAllRanges();s.addRange(r);toast("Selezionato: copia a mano")} }
   else if(b.dataset.edit) openForm(trades.find(t=>t.id===b.dataset.edit));
+  else if(b.dataset.move) openMove(trades.find(t=>t.id===b.dataset.move));
+  else if(b.dataset.undo){ const id=b.dataset.undo;
+    if(armed!=="u"+id){armed="u"+id;b.textContent="Conferma annulla";b.classList.add("danger");setTimeout(()=>{if(armed==="u"+id){armed=null;render()}},3000);return}
+    armed=null; undoMove(id); }
   else if(b.dataset.del){ const id=b.dataset.del;
-    if(armed!==id){armed=id;render();setTimeout(()=>{if(armed===id){armed=null;render()}},3000);return}
-    armed=null; try{await remove(id);toast("Eliminata")}catch{toast("Eliminazione non riuscita")} }
+    if(armed!==id){armed=id;b.textContent="Conferma";b.classList.add("danger");setTimeout(()=>{if(armed===id){armed=null;render()}},3000);return}
+    armed=null; trades=trades.filter(t=>t.id!==id); lsWrite(); render(); toast("Eliminata"); }
 });
 
 // ---- schede
@@ -297,23 +419,9 @@ const TABS=[["tabOps","ops"],["tabMonths","months"],["tabTitles","titles"]];
 function tab(i){ TABS.forEach(([b,p],j)=>{ $(p).hidden=j!==i; $(b).setAttribute("aria-selected",j===i); }); }
 TABS.forEach(([b],i)=>$(b).onclick=()=>tab(i));
 
-// ---- archivio: database privato dell'utente, altrimenti memoria del browser
+// ---- archivio sul telefono e backup
 function lsRead(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch{return[]}}
-function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(trades))}catch{}}
-async function save(id,d){
-  if(col){ try{ const ref=id?col.doc(id):col.doc(); await ref.set(d); return; }
-    catch(x){ if(!x||x.code!=="invalid_argument"||trades.length) throw x; localMode(); id=null; } }
-  if(id) trades=trades.map(t=>t.id===id?{...d,id}:t); else trades.push({...d,id:"l"+Date.now()});
-  lsWrite(); render();
-}
-async function remove(id){
-  if(col){ await col.doc(id).delete(); return; }
-  trades=trades.filter(t=>t.id!==id); lsWrite(); render();
-}
-function localMode(){ col=null; trades=lsRead(); render();
-  $("storeNote").textContent="Le operazioni sono salvate su questo telefono. Fai un backup ogni tanto."; $("storeNote").hidden=false; }
-
-// ---- backup
+function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(trades))}catch{toast("Salvataggio non riuscito")}}
 $("expBtn").onclick=()=>{
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([JSON.stringify(trades,null,1)],{type:"application/json"}));
@@ -330,19 +438,10 @@ $("impFile").onchange=async e=>{
     lsWrite(); render(); toast(n+" operazioni importate");
   }catch{ toast("File di backup non valido"); }
 };
-if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 
-render();
-(async()=>{
-  try{
-    const c=window.claude; if(!c||!c.use) return localMode();
-    const [user,db]=await Promise.all([c.use("user"),c.use("db")]);
-    const uid=user?await user.id():null;
-    if(!db||!uid) return localMode();
-    col=db.collection("data/users/"+uid);
-    col.onSnapshot(s=>{ trades=s.docs.map(d=>({...d.data(),id:d.id})); render(); }, ()=>localMode());
-  }catch{ localMode(); }
-})();
+trades=lsRead(); render();
+$("storeNote").textContent="Le operazioni sono salvate su questo telefono. Fai un backup ogni tanto."; $("storeNote").hidden=false;
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
 </body>
 </html>
