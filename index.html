@@ -199,7 +199,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <div class="f"><span class="lbl">Notifiche +10% e poi ogni +5%</span><div class="calc" id="sNotState">Non attive</div></div>
     <div class="acts" style="justify-content:flex-start"><button type="button" id="sNotOn" class="mvbtn">Attiva notifiche</button><button type="button" id="sNotTest">Invia notifica di prova</button><button type="button" id="sNotOff">Disattiva</button></div>
     <div class="err" id="sErr" hidden></div>
-    <p class="note" style="text-align:left">Prezzi Yahoo Finance, ritardati di circa 15 minuti. Il server controlla le posizioni aperte ogni 15 minuti nei giorni feriali, in orario di borsa.</p>
+    <p class="note" style="text-align:left">Prezzi Yahoo Finance, ritardati di circa 15 minuti, convertiti in euro al cambio del momento. Il server controlla le posizioni aperte ogni 15 minuti nei giorni feriali, in orario di borsa.</p>
   </form>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -249,7 +249,7 @@ if(!cfg.device){ cfg.device=Array.from(crypto.getRandomValues(new Uint8Array(16)
 function saveCfg(){try{localStorage.setItem(CFG,JSON.stringify(cfg))}catch{}}
 const api=p=>cfg.api.replace(/\/+$/,"")+p;
 const itemOf=t=>t.isin?t.isin+(t.sym?"|"+t.sym:""):(t.sym||"");
-function quoteOf(t){ const q=prices[itemOf(t)]; if(!q||!(t.buy>0))return null; const pot=(q.price-t.buy)*t.qty; return {q,pot,pct:(q.price/t.buy-1)*100}; }
+function quoteOf(t){ const q=prices[itemOf(t)]; if(!q||!(t.buy>0))return null; const pe=typeof q.priceEur==="number"?q.priceEur:(q.currency==="EUR"||!q.currency?q.price:null); if(pe===null)return null; const pot=(pe-t.buy)*t.qty; return {q,pe,pot,pct:(pe/t.buy-1)*100}; }
 async function refreshPrices(manual){
   if(!cfg.api){ if(manual){toast("Imposta prima l’indirizzo del server");openSettings();} return; }
   const items=[...new Set(trades.filter(t=>!calc(t).closed).map(itemOf).filter(Boolean))];
@@ -314,7 +314,7 @@ function card(t){
       <div><span class="lbl">Disinvestiti</span><span class="num">${c.closed?eur(c.out):"—"}</span></div>
       <div><span class="lbl">Prezzo utile acquisto</span><span class="num">${typeof t.target==="number"?px(t.target):"—"}</span></div>
     </div>
-    ${!c.closed?(()=>{const L=quoteOf(t); return L?`<div class="live"><span><span class="lbl">Prezzo attuale</span> <span class="num">${px(L.q.price)}${L.q.currency&&L.q.currency!=="EUR"?" "+esc(L.q.currency):""}</span></span><span class="big ${cls(L.pot)}">${sgn(L.pot)} <small>(${pct(L.pct)})</small></span></div>`:(cfg.api&&itemOf(t)?`<div class="live"><span class="date">Prezzo attuale non disponibile</span></div>`:"");})():""}
+    ${!c.closed?(()=>{const L=quoteOf(t); return L?`<div class="live"><span><span class="lbl">Prezzo attuale</span> <span class="num">${px(L.pe)} €${L.q.currency&&L.q.currency!=="EUR"?` <small>(${px(L.q.price)} ${esc(L.q.currency)})</small>`:""}</span></span><span class="big ${cls(L.pot)}">${sgn(L.pot)} <small>(${pct(L.pct)})</small></span></div>`:(cfg.api&&itemOf(t)?`<div class="live"><span class="date">Prezzo attuale non disponibile</span></div>`:"");})():""}
     ${moves}
     <div class="acts">${!c.closed?`<button type="button" class="mvbtn" data-move="${t.id}">+ Movimento</button>`:""}${!c.closed&&(t.moves||[]).length>1?`<button type="button" data-undo="${t.id}">Annulla ultimo</button>`:""}<button type="button" data-edit="${t.id}">Modifica</button>
     <button type="button" data-del="${t.id}" class="${armed===t.id?"danger":""}">${armed===t.id?"Conferma":"Elimina"}</button></div>
