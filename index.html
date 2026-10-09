@@ -28,6 +28,12 @@ h3.sec{margin:6px 0 0;font-size:12px;text-transform:uppercase;letter-spacing:.07
 .seg button{flex:1;border:0;background:transparent;padding:10px;border-radius:8px;font-weight:600;color:var(--muted)}
 .seg button[aria-pressed="true"]{background:var(--surface);color:var(--fg)}
 input[readonly]{opacity:.6}
+.hdr{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.hbtns{display:flex;gap:6px}
+button.ghost{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-size:13px;color:var(--muted)}
+#sPot{font-size:16px;font-weight:600;margin-top:4px}
+.live{display:flex;justify-content:space-between;gap:10px;align-items:baseline;background:var(--surface2);border-radius:8px;padding:8px 10px;flex-wrap:wrap}
+.live .big{font-family:var(--mono);font-weight:600;font-size:16px}
 </style>
 <style>
 /* Layout: una colonna da telefono. Riepilogo in alto, due schede (Operazioni / Mesi), modulo a comparsa dal basso. */
@@ -116,10 +122,10 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 
 
 <div class="wrap">
-  <h1>Diario di Trading</h1>
+  <div class="hdr"><h1>Diario di Trading</h1><div class="hbtns"><button type="button" id="refBtn" class="ghost">Aggiorna prezzi</button><button type="button" id="setBtn" class="ghost" aria-label="Impostazioni">Impostazioni</button></div></div>
 
   <div class="summary">
-    <div class="sum wide"><span class="lbl">Investito ora</span><span class="num" id="sOpen">0,00 €</span><small id="sOpenCap">nessuna posizione aperta</small></div>
+    <div class="sum wide"><span class="lbl">Investito ora</span><span class="num" id="sOpen">0,00 €</span><small id="sOpenCap">nessuna posizione aperta</small><span class="num" id="sPot"></span><small id="sPotCap"></small></div>
     <div class="sum"><span class="lbl" id="sMonthLbl">Questo mese</span><span class="num" id="sMonth">0,00 €</span><small id="sMonthCap">nessuna operazione chiusa</small></div>
     <div class="sum"><span class="lbl">Totale</span><span class="num" id="sTot">0,00 €</span><small id="sTotCap">0 operazioni chiuse</small></div>
   </div>
@@ -163,6 +169,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     </div>
     <div class="f"><span class="lbl">Euro disinvestiti</span><div class="calc num" id="cOut">—</div></div>
     <div class="f"><span class="lbl">Guadagno</span><div class="calc big num" id="cGain">—</div></div>
+    <label class="f"><span class="lbl">Simbolo per il prezzo (facoltativo)</span><input id="fSym" class="num" autocapitalize="characters" spellcheck="false" placeholder="es. ENEL.MI, solo se il prezzo non si trova"></label>
     <label class="f"><span class="lbl">Prezzo utile di acquisto</span><input id="fTarget" class="num" inputmode="decimal" placeholder="facoltativo"></label>
     <div class="err" id="fErr" hidden></div>
     <button class="primary" type="submit">Salva</button>
@@ -184,12 +191,23 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <button class="primary" type="submit">Registra movimento</button>
   </form>
 </div>
+<div class="sheet" id="ssheet" hidden>
+  <form id="sform" autocomplete="off">
+    <header><h1>Impostazioni</h1><button type="button" id="sClose">Chiudi</button></header>
+    <label class="f"><span class="lbl">Indirizzo del server prezzi</span><input id="sApi" class="num" inputmode="url" spellcheck="false" placeholder="https://diario-trading.tuonome.workers.dev"></label>
+    <button class="primary" type="submit">Salva indirizzo</button>
+    <div class="f"><span class="lbl">Notifiche +10% e poi ogni +5%</span><div class="calc" id="sNotState">Non attive</div></div>
+    <div class="acts" style="justify-content:flex-start"><button type="button" id="sNotOn" class="mvbtn">Attiva notifiche</button><button type="button" id="sNotTest">Invia notifica di prova</button><button type="button" id="sNotOff">Disattiva</button></div>
+    <div class="err" id="sErr" hidden></div>
+    <p class="note" style="text-align:left">Prezzi Yahoo Finance, ritardati di circa 15 minuti. Il server controlla le posizioni aperte ogni 15 minuti nei giorni feriali, in orario di borsa.</p>
+  </form>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
 const $=id=>document.getElementById(id);
 const LS="diario-trading-v1";
-let trades=[], editId=null, moveId=null, moveType="ENT", armed=null;
+let trades=[], prices={}, editId=null, moveId=null, moveType="ENT", armed=null;
 
 const num=s=>{ if(typeof s==="number")return s; s=String(s??"").trim().replace(/\s/g,""); if(!s)return NaN;
   if(s.includes(",")) s=s.replace(/\./g,"").replace(",","."); return Number(s); };
@@ -223,6 +241,60 @@ function expo(list){
   return {max,avg:sum/(b-a+1)};
 }
 
+// ---- prezzi in tempo (quasi) reale e notifiche dal server
+const CFG="diario-trading-cfg", PX="diario-trading-prezzi";
+let cfg={}; try{cfg=JSON.parse(localStorage.getItem(CFG))||{}}catch{}
+try{prices=JSON.parse(localStorage.getItem(PX))||{}}catch{}
+if(!cfg.device){ cfg.device=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,"0")).join(""); saveCfg(); }
+function saveCfg(){try{localStorage.setItem(CFG,JSON.stringify(cfg))}catch{}}
+const api=p=>cfg.api.replace(/\/+$/,"")+p;
+const itemOf=t=>t.isin?t.isin+(t.sym?"|"+t.sym:""):(t.sym||"");
+function quoteOf(t){ const q=prices[itemOf(t)]; if(!q||!(t.buy>0))return null; const pot=(q.price-t.buy)*t.qty; return {q,pot,pct:(q.price/t.buy-1)*100}; }
+async function refreshPrices(manual){
+  if(!cfg.api){ if(manual){toast("Imposta prima l’indirizzo del server");openSettings();} return; }
+  const items=[...new Set(trades.filter(t=>!calc(t).closed).map(itemOf).filter(Boolean))];
+  if(!items.length){ if(manual)toast("Nessuna posizione aperta"); return; }
+  $("refBtn").textContent="Aggiorno…";
+  try{ const r=await fetch(api("/prices?items="+encodeURIComponent(items.join(","))));
+    const d=await r.json(); let ok=0;
+    for(const it of items){ if(d[it]){prices[it]={...d[it],at:Date.now()};ok++;} }
+    try{localStorage.setItem(PX,JSON.stringify(prices))}catch{}
+    render(); if(manual||ok<items.length)toast(ok<items.length?"Prezzo non trovato per "+(items.length-ok)+(items.length-ok===1?" titolo":" titoli"):"Prezzi aggiornati");
+  }catch{ toast("Server prezzi non raggiungibile"); }
+  $("refBtn").textContent="Aggiorna prezzi";
+}
+async function sync(extra){
+  if(!cfg.api||!cfg.notify)return;
+  const positions=trades.filter(t=>!calc(t).closed).map(t=>({id:t.id,name:t.name,isin:t.isin,symbol:t.sym||"",avg:t.buy,qty:t.qty}));
+  try{ await fetch(api("/sync"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({device:cfg.device,positions,...(extra||{})})}); }catch{}
+}
+async function swCfg(){ try{ const c=await caches.open("diario-cfg"); await c.put("/__cfg",new Response(JSON.stringify({api:cfg.api,device:cfg.device}))); }catch{} }
+function notState(){ $("sNotState").textContent=cfg.notify?"Attive su questo telefono":"Non attive"; $("sNotOn").hidden=!!cfg.notify; $("sNotTest").hidden=$("sNotOff").hidden=!cfg.notify; }
+function openSettings(){ $("sApi").value=cfg.api||""; $("sErr").hidden=true; notState(); $("ssheet").hidden=false; }
+const sErr=m=>{$("sErr").textContent=m;$("sErr").hidden=false};
+$("setBtn").onclick=openSettings; $("sClose").onclick=()=>$("ssheet").hidden=true;
+$("refBtn").onclick=()=>refreshPrices(true);
+$("sform").addEventListener("submit",async e=>{ e.preventDefault();
+  let u=$("sApi").value.trim(); if(u&&!/^https?:\/\//.test(u))u="https://"+u;
+  if(!u)return sErr("Inserisci l’indirizzo del server.");
+  try{ const r=await fetch(u.replace(/\/+$/,"")+"/"); const d=await r.json(); if(d.app!=="diario-trading")throw 0; }
+  catch{ return sErr("A questo indirizzo non risponde il server del diario. Controlla di averlo copiato tutto."); }
+  cfg.api=u; saveCfg(); swCfg(); $("sErr").hidden=true; toast("Server collegato"); refreshPrices(false); sync();
+});
+$("sNotOn").onclick=async()=>{
+  if(!cfg.api)return sErr("Salva prima l’indirizzo del server.");
+  if(!("serviceWorker" in navigator)||!("PushManager" in window))return sErr("Questo browser non supporta le notifiche. Usa l’app installata da Chrome.");
+  if(await Notification.requestPermission()!=="granted")return sErr("Permesso negato. Attiva le notifiche per questa app dalle impostazioni di Android.");
+  try{ const {key}=await (await fetch(api("/vapid"))).json();
+    const raw=Uint8Array.from(atob(key.replace(/-/g,"+").replace(/_/g,"/")+"==".slice(0,(4-key.length%4)%4)),c=>c.charCodeAt(0));
+    const reg=await navigator.serviceWorker.ready; let sub=await reg.pushManager.getSubscription();
+    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:raw});
+    cfg.notify=true; saveCfg(); await swCfg(); await sync({sub:sub.toJSON()}); notState(); toast("Notifiche attive");
+  }catch{ sErr("Attivazione non riuscita. Riprova con la connessione attiva."); }
+};
+$("sNotTest").onclick=async()=>{ try{ const r=await fetch(api("/test"),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({device:cfg.device})}); const d=await r.json(); if(d.error)throw 0; toast("Notifica di prova inviata"); }catch{ sErr("Invio non riuscito: disattiva e riattiva le notifiche."); } };
+$("sNotOff").onclick=async()=>{ try{ const reg=await navigator.serviceWorker.ready; const sub=await reg.pushManager.getSubscription(); if(sub)await sub.unsubscribe(); }catch{} await sync({sub:null}); cfg.notify=false; saveCfg(); notState(); toast("Notifiche disattivate"); };
+
 function toast(m){const t=$("toast");t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,1600)}
 
 function card(t){
@@ -242,6 +314,7 @@ function card(t){
       <div><span class="lbl">Disinvestiti</span><span class="num">${c.closed?eur(c.out):"—"}</span></div>
       <div><span class="lbl">Prezzo utile acquisto</span><span class="num">${typeof t.target==="number"?px(t.target):"—"}</span></div>
     </div>
+    ${!c.closed?(()=>{const L=quoteOf(t); return L?`<div class="live"><span><span class="lbl">Prezzo attuale</span> <span class="num">${px(L.q.price)}${L.q.currency&&L.q.currency!=="EUR"?" "+esc(L.q.currency):""}</span></span><span class="big ${cls(L.pot)}">${sgn(L.pot)} <small>(${pct(L.pct)})</small></span></div>`:(cfg.api&&itemOf(t)?`<div class="live"><span class="date">Prezzo attuale non disponibile</span></div>`:"");})():""}
     ${moves}
     <div class="acts">${!c.closed?`<button type="button" class="mvbtn" data-move="${t.id}">+ Movimento</button>`:""}${!c.closed&&(t.moves||[]).length>1?`<button type="button" data-undo="${t.id}">Annulla ultimo</button>`:""}<button type="button" data-edit="${t.id}">Modifica</button>
     <button type="button" data-del="${t.id}" class="${armed===t.id?"danger":""}">${armed===t.id?"Conferma":"Elimina"}</button></div>
@@ -260,6 +333,9 @@ function render(){
   const cur=months[curK];
   $("sOpen").textContent=eur(open);
   $("sOpenCap").textContent=nOpen?nOpen+(nOpen===1?" posizione aperta":" posizioni aperte"):"nessuna posizione aperta";
+  let pot=0,potInv=0,potN=0; for(const t of trades){ if(calc(t).closed)continue; const L=quoteOf(t); if(L){pot+=L.pot;potInv+=t.qty*t.buy;potN++;} }
+  $("sPot").textContent=potN?"Potenziale "+sgn(pot)+" ("+pct(pot/potInv*100)+")":""; $("sPot").className="num "+cls(pot);
+  $("sPotCap").textContent=potN&&potN<nOpen?"calcolato su "+potN+" di "+nOpen+" posizioni":"";
   $("sMonthLbl").textContent=monthName(curK);
   $("sMonth").textContent=sgn(cur?cur.gain:0); $("sMonth").className="num "+cls(cur?cur.gain:0);
   $("sMonthCap").textContent=cur?"esposizione max "+eur(cur.max):"nessuna chiusura";
@@ -329,7 +405,7 @@ function openForm(t){
   const locked=!!(t&&t.moves&&t.moves.length>1);
   $("fName").value=t?t.name:""; $("fIsin").value=t?t.isin||"":"";
   $("fDate").value=t&&calc(t).closed?t.date||"":""; $("fIn").value=t?t.din||"":today();
-  $("fQty").value=t?v(t.qty):""; $("fBuy").value=t?v(t.buy):""; $("fSell").value=t?v(t.sell):""; $("fTarget").value=t?v(t.target):"";
+  $("fQty").value=t?v(t.qty):""; $("fBuy").value=t?v(t.buy):""; $("fSell").value=t?v(t.sell):""; $("fTarget").value=t?v(t.target):""; $("fSym").value=t?t.sym||"":"";
   for(const i of ["fQty","fBuy","fIn"]) $(i).readOnly=locked;
   $("fLock").hidden=!locked;
   $("fErr").hidden=true; live(); $("sheet").hidden=false; $("sheet").scrollTop=0; if(!t)$("fName").focus();
@@ -348,7 +424,7 @@ $("form").addEventListener("submit",e=>{
   if(!isNaN(sell)&&$("fIn").value&&$("fDate").value&&$("fDate").value<$("fIn").value)return err("La data di uscita è precedente alla data dell’ultimo movimento.");
   const old=trades.find(t=>t.id===editId);
   const d={...(old||{}),name:$("fName").value.trim(),isin:$("fIsin").value.trim().toUpperCase(),date:isNaN(sell)?"":($("fDate").value||today()),qty,buy,din:$("fIn").value||"",ts:old?old.ts:Date.now()};
-  delete d.sell; delete d.target;
+  delete d.sell; delete d.target; d.sym=$("fSym").value.trim().toUpperCase(); if(!d.sym)delete d.sym;
   if(!isNaN(sell))d.sell=sell; if(!isNaN(target))d.target=target;
   if(d.moves&&d.moves.length===1) d.moves=[{...d.moves[0],qty,price:buy,date:d.din}];
   if(old) trades=trades.map(t=>t.id===editId?{...d,id:editId}:t); else trades.push({...d,id:"l"+Date.now()});
@@ -421,7 +497,7 @@ TABS.forEach(([b],i)=>$(b).onclick=()=>tab(i));
 
 // ---- archivio sul telefono e backup
 function lsRead(){try{return JSON.parse(localStorage.getItem(LS))||[]}catch{return[]}}
-function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(trades))}catch{toast("Salvataggio non riuscito")}}
+function lsWrite(){try{localStorage.setItem(LS,JSON.stringify(trades))}catch{toast("Salvataggio non riuscito")} clearTimeout(lsWrite.h); lsWrite.h=setTimeout(()=>{sync(); if(trades.some(t=>!calc(t).closed&&!prices[itemOf(t)]))refreshPrices(false);},800);}
 $("expBtn").onclick=()=>{
   const a=document.createElement("a");
   a.href=URL.createObjectURL(new Blob([JSON.stringify(trades,null,1)],{type:"application/json"}));
@@ -439,7 +515,8 @@ $("impFile").onchange=async e=>{
   }catch{ toast("File di backup non valido"); }
 };
 
-trades=lsRead(); render();
+trades=lsRead(); render(); refreshPrices(false); sync(); swCfg();
+document.addEventListener("visibilitychange",()=>{ if(document.visibilityState==="visible")refreshPrices(false); });
 $("storeNote").textContent="Le operazioni sono salvate su questo telefono. Fai un backup ogni tanto."; $("storeNote").hidden=false;
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 </script>
